@@ -25,7 +25,7 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadTodaySchedules();
-    _loadCalendarData();
+    _loadCalendarData(_selectedDate);
   }
 
   @override
@@ -46,7 +46,7 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
   // 刷新数据的方法
   Future<void> _refreshData() async {
     await _loadTodaySchedules();
-    await _loadCalendarData();
+    await _loadCalendarData(_selectedDate);
   }
 
   // 公共刷新方法，供外部调用
@@ -115,15 +115,18 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
   }
 
   // 加载日历概览数据
-  Future<void> _loadCalendarData() async {
+  Future<void> _loadCalendarData([DateTime? targetMonth]) async {
     try {
       final medications = await _databaseService.getActiveMedications();
       final calendarData = <DateTime, Map<String, int>>{};
       
-      // 获取本月历史数据（从本月1号到今天）
+
+      
+      // 获取指定月份的数据（如果未指定则使用当前选中日期的月份）
       final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, 1);
-      final endDate = now;
+      final monthToLoad = targetMonth ?? _selectedDate;
+      final startDate = DateTime(monthToLoad.year, monthToLoad.month, 1);
+      final endDate = DateTime(monthToLoad.year, monthToLoad.month + 1, 0); // 月末
       
       for (var date = startDate; date.isBefore(endDate.add(const Duration(days: 1))); date = date.add(const Duration(days: 1))) {
         final dayKey = DateTime(date.year, date.month, date.day);
@@ -212,7 +215,7 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
       });
       
       // 重新加载日历数据以更新标记
-      _loadCalendarData();
+      _loadCalendarData(_selectedDate);
       
       NavigationHelper.showSnackBar(
         schedule.isCompleted ? 'Check-in completed' : 'Check-in cancelled',
@@ -342,8 +345,8 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
         children: [
           // 日历组件
           TableCalendar<dynamic>(
-            firstDay: DateTime(DateTime.now().year, DateTime.now().month, 1),
-            lastDay: DateTime.now(),
+            firstDay: DateTime(DateTime.now().year - 1, 1, 1),
+            lastDay: DateTime(DateTime.now().year + 1, 12, 31),
             focusedDay: _selectedDate,
             selectedDayPredicate: (day) {
               return isSameDay(_selectedDate, day);
@@ -359,8 +362,25 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
                 _quickCheckForSelectedDate();
               }
             },
+            onPageChanged: (focusedDay) {
+              // 当用户切换月份时，重新加载该月份的数据
+              print('Page changed to: $focusedDay');
+              setState(() {
+                _selectedDate = focusedDay;
+              });
+              _loadCalendarData(focusedDay);
+              _loadTodaySchedules();
+            },
+            onFormatChanged: (format) {
+              if (_isCalendarExpanded != (format == CalendarFormat.month)) {
+                setState(() {
+                  _isCalendarExpanded = format == CalendarFormat.month;
+                });
+              }
+            },
             calendarFormat: _isCalendarExpanded ? CalendarFormat.month : CalendarFormat.week,
             startingDayOfWeek: StartingDayOfWeek.monday,
+            availableGestures: AvailableGestures.all,
             eventLoader: (day) {
               final dayKey = DateTime(day.year, day.month, day.day);
               final dayData = _calendarData[dayKey];
@@ -369,6 +389,8 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
             headerStyle: const HeaderStyle(
               formatButtonVisible: false,
               titleCentered: true,
+              leftChevronVisible: true,
+              rightChevronVisible: true,
               leftChevronIcon: Icon(Icons.chevron_left),
               rightChevronIcon: Icon(Icons.chevron_right),
             ),
@@ -546,67 +568,99 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
           child: Row(
             children: [
               // 打卡状态图标
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: schedule.isCompleted
-                      ? Colors.green[600]
-                      : isOverdue
-                          ? (Theme.of(context).brightness == Brightness.dark ? Colors.red[900] : Colors.red[100])
-                          : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.grey[200]),
-                  border: Border.all(
+              GestureDetector(
+                onTap: () => _toggleMedicationCheck(schedule),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: schedule.isCompleted
-                        ? Colors.green[600]!
+                        ? Colors.green[600]
                         : isOverdue
-                            ? Colors.red[400]!
-                            : Colors.grey[400]!,
-                    width: 2,
+                            ? (Theme.of(context).brightness == Brightness.dark ? Colors.red[900] : Colors.red[100])
+                            : (Theme.of(context).brightness == Brightness.dark ? Colors.grey[700] : Colors.grey[200]),
+                    border: Border.all(
+                      color: schedule.isCompleted
+                          ? Colors.green[600]!
+                          : isOverdue
+                              ? Colors.red[400]!
+                              : Colors.grey[400]!,
+                      width: 2,
+                    ),
                   ),
-                ),
-                child: Icon(
-                  schedule.isCompleted
-                      ? Icons.check
-                      : isOverdue
-                          ? Icons.warning
-                          : Icons.medication,
-                  color: schedule.isCompleted
-                      ? Colors.white
-                      : isOverdue
-                          ? Colors.red[600]
-                          : Colors.grey[600],
-                  size: 20,
+                  child: Icon(
+                    schedule.isCompleted
+                        ? Icons.check
+                        : isOverdue
+                            ? Icons.warning
+                            : Icons.medication,
+                    color: schedule.isCompleted
+                        ? Colors.white
+                        : isOverdue
+                            ? Colors.red[600]
+                            : Colors.grey[600],
+                    size: 20,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),
               // 用药信息
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      schedule.medication.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        decoration: schedule.isCompleted
-                            ? TextDecoration.lineThrough
-                            : null,
-                        color: schedule.isCompleted
-                            ? Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6)
-                            : null,
+                child: GestureDetector(
+                  onTap: () async {
+                    // 点击药物名称跳转到详情页面
+                    final result = await NavigationHelper.toMedicationDetail(schedule.medication);
+                    if (result == true) {
+                      // 如果药物信息被编辑，刷新数据
+                      await _refreshData();
+                    }
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              schedule.medication.name,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                decoration: schedule.isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: schedule.isCompleted
+                                    ? Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6)
+                                    : Colors.blue[600],
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios,
+                            size: 14,
+                            color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.4),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Dosage: ${schedule.medication.dosage}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Dosage: ${schedule.medication.dosage}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 2),
+                      Text(
+                        _buildDateRangeText(schedule.medication),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.5),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               // 时间信息
@@ -683,6 +737,16 @@ class _MedicationCheckScreenState extends State<MedicationCheckScreen> with Widg
     );
     
     return now.isAfter(scheduleTime.add(const Duration(minutes: 30)));
+  }
+
+  String _buildDateRangeText(Medication medication) {
+    final startDate = DateFormat('MMM dd, yyyy').format(medication.startDate);
+    if (medication.endDate != null) {
+      final endDate = DateFormat('MMM dd, yyyy').format(medication.endDate!);
+      return 'Duration: $startDate - $endDate';
+    } else {
+      return 'Start: $startDate (No end date)';
+    }
   }
 }
 

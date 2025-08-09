@@ -188,10 +188,11 @@ class DatabaseService {
 
   Future<List<Medication>> getActiveMedications() async {
     final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
     final List<Map<String, dynamic>> maps = await db.query(
       'medications',
-      where: 'isActive = ?',
-      whereArgs: [1],
+      where: 'isActive = ? AND (endDate IS NULL OR endDate >= ?)',
+      whereArgs: [1, now],
     );
     return List.generate(maps.length, (i) {
       return Medication.fromMap(maps[i]);

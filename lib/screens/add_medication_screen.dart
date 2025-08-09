@@ -20,14 +20,14 @@ class _AddMedicationScreenState extends State<AddMedicationScreen> {
   
   final DatabaseService _databaseService = DatabaseService();
   
-  String _frequency = '每日';
+  String _frequency = 'Daily';
   List<String> _selectedTimes = [];
   DateTime _startDate = DateTime.now();
   DateTime? _endDate;
   bool _hasEndDate = false;
   bool _isLoading = false;
 
-  final List<String> _frequencyOptions = ['每日', '每周', '按需'];
+  final List<String> _frequencyOptions = ['Daily', 'Weekly', 'As Needed'];
 
   @override
   void initState() {
